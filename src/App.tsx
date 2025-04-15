@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Joystick } from 'react-joystick-component';
 import './App.css';
 
