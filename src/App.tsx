@@ -130,7 +130,7 @@ const App = () => {
 
         {/* Joystick Control */}
         <div className="bg-gray-800 rounded-lg p-6 text-center shadow-lg transition hover:shadow-xl flex items-center justify-center col-span-2">
-          <div>
+          <div className='flex flex-col items-center'>
             <h2 className="text-xl font-semibold mb-4">🎮 Joystick Control</h2>
             <Joystick
               size={joystickSize}
@@ -153,13 +153,24 @@ const App = () => {
               color: 'bg-blue-100',
             },
             {
-              title: `🪞 Gas Sensor: ${
-                sensorData.gas_sensor ? 'Detected' : 'Not Detected'
+              title: `🪞 Gas Sensor:         ${
+                sensorData.gas_sensor ? 'Detected' : '\Not Detected'
               }`,
               color: 'bg-red-100',
             },
             {
-              title: `🔦 IR Readings: ${JSON.stringify(sensorData.ir_sensors)}`,
+              title: (
+                <>
+                  🔦 IR Readings:
+                  <ul className="text-left pl-4 mt-1 list-disc list-inside">
+                    {Object.entries(sensorData.ir_sensors).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {String(value)}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ),
               color: 'bg-green-100',
             },
           ].map((item, idx) => (
