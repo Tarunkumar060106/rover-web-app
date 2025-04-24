@@ -23,7 +23,7 @@ const App = () => {
     const fetchSensorData = async () => {
       try {
         // Update HTTP endpoint to Raspberry Pi's IP and port
-        const response = await fetch('http://192.168.24.238:8000/rover/sensor_data'); // Replace with your Raspberry Pi's IP and HTTP endpoint
+        const response = await fetch('http://192.168.219.238:8000/rover/sensor_data'); // Replace with your Raspberry Pi's IP and HTTP endpoint
         const data = await response.json();
 
         // Validate the data structure
@@ -76,7 +76,7 @@ const App = () => {
 
     try {
       // Send direction as an HTTP POST request
-      await fetch('http://192.168.24.238:8000/rover/control', {
+      await fetch('http://192.168.219.238:8000/rover/control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -116,7 +116,7 @@ const App = () => {
         <div className="bg-black border border-gray-600 overflow-hidden rounded-lg shadow-lg row-span-3 col-span-3 aspect-[4/3] relative">
           <iframe
             title="Live Video Stream"
-            src="http://192.168.24.238:8000/video_feed" // Update video feed URL to Raspberry Pi's IP
+            src="http://192.168.219.238:8000/video_feed" // Update video feed URL to Raspberry Pi's IP
             width="100%"
             height="100%"
             className="rounded-lg absolute inset-0"
