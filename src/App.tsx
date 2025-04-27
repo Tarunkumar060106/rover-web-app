@@ -23,7 +23,7 @@ const App = () => {
     const fetchSensorData = async () => {
       try {
         // Update HTTP endpoint to Raspberry Pi's IP and port
-        const response = await fetch('http://192.168.219.238:8000/rover/sensor_data'); // Replace with your Raspberry Pi's IP and HTTP endpoint
+        const response = await fetch('http://192.168.181.238:8000/rover/sensor_data'); // Replace with your Raspberry Pi's IP and HTTP endpoint
         const data = await response.json();
 
         // Validate the data structure
@@ -55,16 +55,17 @@ const App = () => {
     if (x === null || y === null) return;
 
     const angle = Math.atan2(y, x) * (180 / Math.PI);
-    await sendDirectionToRaspberryPi(angle);
+    await sendDirectionToThinkV(angle);
   };
 
-  // Send direction to Raspberry Pi via HTTP POST request
-  const sendDirectionToRaspberryPi = async (angle: number | 'stop') => {
+  const sendDirectionToThinkV = async (input: number | 'stop' | 'forward' | 'backward' | 'left' | 'right') => {
     let direction: string;
-
-    if (angle === 'stop') {
-      direction = 'stop';
+  
+    if (typeof input === 'string') {
+      direction = input; // Directly use the direction if it's already a string
     } else {
+      // Calculate direction based on angle
+      const angle = input;
       if (angle > -45 && angle <= 45) direction = 'right';
       else if (angle > 45 && angle <= 135) direction = 'forward';
       else if (angle > 135 || angle <= -135) direction = 'left';
@@ -72,22 +73,56 @@ const App = () => {
       else direction = 'stop';
     }
 
-    console.log(`Sending direction to Raspberry Pi: ${direction}`);
-
+    const directionMap: Record<string, number> = {
+      stop: 0,
+      forward: 1,
+      backward: 2,
+      left: 3,
+      right: 4,
+    }
+    const valueToSend = directionMap[direction] ?? 0;
+    console.log(`Sending motorControl to ThinkV API ${direction}: ${valueToSend}`);
+  
     try {
-      // Send direction as an HTTP POST request
-      await fetch('http://192.168.219.238:8000/rover/control', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ direction }),
+      const url = `https://api.thinkv.space/update?channel_id=953778df-9a6a-4d1d-9eab-cfda344196b4&api_key=fac56c13-e4a4-4e49-a892-d012650719a6&field1=${valueToSend}`;
+  
+      await fetch(url, {
+        method: 'GET',
       });
     } catch (error) {
-      console.error('Error sending direction to Raspberry Pi:', error);
+      console.error('Error sending motorControl to ThinkV API:', error);
     }
   };
 
+  // Send direction to Raspberry Pi via HTTP POST request
+  // const sendDirectionToRaspberryPi = async (angle: number | 'stop') => {
+  //   let direction: string;
+
+  //   if (angle === 'stop') {
+  //     direction = 'stop';
+  //   } else {
+  //     if (angle > -45 && angle <= 45) direction = 'right';
+  //     else if (angle > 45 && angle <= 135) direction = 'forward';
+  //     else if (angle > 135 || angle <= -135) direction = 'left';
+  //     else if (angle > -135 && angle <= -45) direction = 'backward';
+  //     else direction = 'stop';
+  //   }
+
+  //   console.log(`Sending direction to Raspberry Pi: ${direction}`);
+
+  //   try {
+  //     // Send direction as an HTTP POST request
+  //     await fetch('http://192.168.219.238:8000/rover/control', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({ direction }),
+  //     });
+  //   } catch (error) {
+  //     console.error('Error sending direction to Raspberry Pi:', error);
+  //   }
+  // };
   // Dynamically adjust joystick size based on screen width
   useEffect(() => {
     const updateJoystickSize = () => {
@@ -116,7 +151,7 @@ const App = () => {
         <div className="bg-black border border-gray-600 overflow-hidden rounded-lg shadow-lg row-span-3 col-span-3 aspect-[4/3] relative">
           <iframe
             title="Live Video Stream"
-            src="http://192.168.219.238:8000/video_feed" // Update video feed URL to Raspberry Pi's IP
+            src="http://192.168.181.238:8000/video_feed" // Update video feed URL to Raspberry Pi's IP
             width="100%"
             height="100%"
             className="rounded-lg absolute inset-0"
@@ -129,17 +164,57 @@ const App = () => {
         </div>
 
         {/* Joystick Control */}
-        <div className="bg-gray-800 rounded-lg p-6 text-center shadow-lg transition hover:shadow-xl flex items-center justify-center col-span-2">
-          <div className='flex flex-col items-center'>
-            <h2 className="text-xl font-semibold mb-4">🎮 Joystick Control</h2>
-            <Joystick
-              size={joystickSize}
-              sticky={false}
-              move={handleJoystickMove}
-              stop={() => sendDirectionToRaspberryPi('stop')}
-            />
+        <div className="bg-gray-800 rounded-lg p-6 text-center shadow-lg transition hover:shadow-xl flex flex-col items-center justify-center col-span-2 space-y-6">
+          <h2 className="text-xl font-semibold mb-4">🎮 Joystick Control</h2>
+
+          <Joystick
+            size={joystickSize}
+            sticky={false}
+            move={handleJoystickMove}
+            stop={() => sendDirectionToThinkV('stop')}
+          />
+
+          {/* Manual Direction Buttons */}
+          <div className="grid grid-cols-3 gap-2 mt-6">
+            <div></div>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => sendDirectionToThinkV('forward')}
+            >
+              ↑
+            </button>
+            <div></div>
+
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => sendDirectionToThinkV('left')}
+            >
+              ←
+            </button>
+            <button
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => sendDirectionToThinkV('stop')}
+            >
+              ■
+            </button>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => sendDirectionToThinkV('right')}
+            >
+              →
+            </button>
+
+            <div></div>
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => sendDirectionToThinkV('backward')}
+            >
+              ↓
+            </button>
+            <div></div>
           </div>
         </div>
+
 
         {/* Sensor Cards */}
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-6 col-span-2">
