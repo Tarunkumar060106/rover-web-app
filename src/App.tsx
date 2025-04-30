@@ -11,60 +11,70 @@ type JoystickEvent = {
 
 const App = () => {
   const [sensorData, setSensorData] = useState({
-    ir_sensors: {},
-    gas_sensor: null,
+    ir_sensors: {} as Record<string, number>,
+    gas_sensor: null as boolean | null,
     dht_sensor: { temperature: null, humidity: null },
   });
 
   const [joystickSize, setJoystickSize] = useState(150);
+  const [motorSpeed, setMotorSpeed] = useState<number>(0); // State for motor speed
 
-  // Fetch sensor data every 2 seconds with validation
+  // Fetch sensor data from ThinkV API every 2 seconds
   useEffect(() => {
     const fetchSensorData = async () => {
       try {
-        // Update HTTP endpoint to Raspberry Pi's IP and port
-        const response = await fetch('http://192.168.181.238:8000/rover/sensor_data'); // Replace with your Raspberry Pi's IP and HTTP endpoint
+        const response = await fetch('https://api.thinkv.space/channels/862d2b4e-c312-4d1c-9425-0c4f40f993b2?api_key=d16b3f1d-580e-42fb-84fd-2acc35f64ca0');
         const data = await response.json();
 
-        // Validate the data structure
         if (
           typeof data === 'object' &&
-          data.ir_sensors &&
-          typeof data.gas_sensor !== 'undefined' &&
-          data.dht_sensor &&
-          typeof data.dht_sensor.temperature !== 'undefined' &&
-          typeof data.dht_sensor.humidity !== 'undefined'
+          data.fields &&
+          typeof data.fields['1']?.value !== 'undefined' &&
+          typeof data.fields['2']?.value !== 'undefined' &&
+          typeof data.fields['3']?.value !== 'undefined'
         ) {
-          setSensorData(data);
+          setSensorData({
+            ir_sensors: {
+              ir_1: data.fields['4']?.value ?? 0,
+              ir_2: data.fields['5']?.value ?? 0,
+              ir_3: data.fields['6']?.value ?? 0,
+              ir_4: data.fields['7']?.value ?? 0,
+            },
+            gas_sensor: data.fields['3']?.value === 1,
+            dht_sensor: {
+              temperature: data.fields['1']?.value ?? null,
+              humidity: data.fields['2']?.value ?? null,
+            },
+          });
         } else {
           console.error('Invalid sensor data received:', data);
         }
       } catch (error) {
-        console.error('Error fetching sensor data:', error);
+        console.error('Error fetching sensor data from ThinkV:', error);
       }
     };
 
     fetchSensorData();
-    const interval = setInterval(fetchSensorData, 2000); // Update every 2 seconds
-    return () => clearInterval(interval); // Cleanup interval on component unmount
+    const interval = setInterval(fetchSensorData, 2000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Handle joystick movement and send direction via HTTP POST request
+  // Handle joystick movement
   const handleJoystickMove = async (event: JoystickEvent) => {
     const { x, y } = event;
     if (x === null || y === null) return;
 
     const angle = Math.atan2(y, x) * (180 / Math.PI);
-    await sendDirectionToThinkV(angle);
+    await sendDirection(angle);
   };
 
-  const sendDirectionToThinkV = async (input: number | 'stop' | 'forward' | 'backward' | 'left' | 'right') => {
+  // Send direction to both ThinkV and Raspberry Pi
+  const sendDirection = async (input: number | 'stop' | 'forward' | 'backward' | 'left' | 'right') => {
     let direction: string;
-  
+
     if (typeof input === 'string') {
-      direction = input; // Directly use the direction if it's already a string
+      direction = input;
     } else {
-      // Calculate direction based on angle
       const angle = input;
       if (angle > -45 && angle <= 45) direction = 'right';
       else if (angle > 45 && angle <= 135) direction = 'forward';
@@ -79,51 +89,33 @@ const App = () => {
       backward: 2,
       left: 3,
       right: 4,
-    }
+    };
     const valueToSend = directionMap[direction] ?? 0;
-    console.log(`Sending motorControl to ThinkV API ${direction}: ${valueToSend}`);
-  
+    console.log(`Sending motorControl: ${direction} (${valueToSend})`);
+
     try {
-      const url = `https://api.thinkv.space/update?channel_id=953778df-9a6a-4d1d-9eab-cfda344196b4&api_key=fac56c13-e4a4-4e49-a892-d012650719a6&field1=${valueToSend}`;
-  
-      await fetch(url, {
-        method: 'GET',
-      });
+      // Send to ThinkV API
+      const thinkvUrl = `https://api.thinkv.space/update?channel_id=953778df-9a6a-4d1d-9eab-cfda344196b4&api_key=fac56c13-e4a4-4e49-a892-d012650719a6&field1=${valueToSend}`;
+      await fetch(thinkvUrl, { method: 'GET' });
+
+      // Send to Raspberry Pi (FastAPI server)
+      const raspiUrl = `http://192.168.178.238:8000/control?command=${valueToSend}`;
+      await fetch(raspiUrl, { method: 'GET' });
+
     } catch (error) {
-      console.error('Error sending motorControl to ThinkV API:', error);
+      console.error('Error sending motor control:', error);
     }
   };
 
-  // Send direction to Raspberry Pi via HTTP POST request
-  // const sendDirectionToRaspberryPi = async (angle: number | 'stop') => {
-  //   let direction: string;
+  // Handle motor speed slider change
+  const handleSpeedChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newSpeed = Number(event.target.value);
+    setMotorSpeed(newSpeed);
 
-  //   if (angle === 'stop') {
-  //     direction = 'stop';
-  //   } else {
-  //     if (angle > -45 && angle <= 45) direction = 'right';
-  //     else if (angle > 45 && angle <= 135) direction = 'forward';
-  //     else if (angle > 135 || angle <= -135) direction = 'left';
-  //     else if (angle > -135 && angle <= -45) direction = 'backward';
-  //     else direction = 'stop';
-  //   }
+    await fetch(`http://192.168.178.238:8000/set_speed?speed=${newSpeed}`);
+  };
 
-  //   console.log(`Sending direction to Raspberry Pi: ${direction}`);
-
-  //   try {
-  //     // Send direction as an HTTP POST request
-  //     await fetch('http://192.168.219.238:8000/rover/control', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify({ direction }),
-  //     });
-  //   } catch (error) {
-  //     console.error('Error sending direction to Raspberry Pi:', error);
-  //   }
-  // };
-  // Dynamically adjust joystick size based on screen width
+  // Dynamically adjust joystick size
   useEffect(() => {
     const updateJoystickSize = () => {
       const newSize = window.innerWidth < 768 ? 100 : 150;
@@ -140,30 +132,24 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex flex-col">
-      {/* Header */}
       <header className="bg-gray-800 py-4 shadow-md">
         <h1 className="text-3xl font-bold text-center">🚀 Rescue Twin Control Interface</h1>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-8 py-8 grid gap-8 lg:grid-cols-5">
-        {/* Video Feed (Spanning 3 Rows and 3 Columns) */}
         <div className="bg-black border border-gray-600 overflow-hidden rounded-lg shadow-lg row-span-3 col-span-3 aspect-[4/3] relative">
           <iframe
             title="Live Video Stream"
-            src="http://192.168.181.238:8000/video_feed" // Update video feed URL to Raspberry Pi's IP
+            src="http://192.168.178.238:8000/video_feed"
             width="100%"
             height="100%"
             className="rounded-lg absolute inset-0"
           >
             <p>Your browser does not support iframes.</p>
           </iframe>
-          <div className="absolute inset-0 bg-gray-900 text-white text-center p-4 hidden">
-            <p>Video feed unavailable. Please check your connection.</p>
-          </div>
         </div>
 
-        {/* Joystick Control */}
+        {/* Joystick and Controls */}
         <div className="bg-gray-800 rounded-lg p-6 text-center shadow-lg transition hover:shadow-xl flex flex-col items-center justify-center col-span-2 space-y-6">
           <h2 className="text-xl font-semibold mb-4">🎮 Joystick Control</h2>
 
@@ -171,7 +157,7 @@ const App = () => {
             size={joystickSize}
             sticky={false}
             move={handleJoystickMove}
-            stop={() => sendDirectionToThinkV('stop')}
+            stop={() => sendDirection('stop')}
           />
 
           {/* Manual Direction Buttons */}
@@ -179,7 +165,7 @@ const App = () => {
             <div></div>
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-              onClick={() => sendDirectionToThinkV('forward')}
+              onClick={() => sendDirection('forward')}
             >
               ↑
             </button>
@@ -187,19 +173,19 @@ const App = () => {
 
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-              onClick={() => sendDirectionToThinkV('left')}
+              onClick={() => sendDirection('left')}
             >
               ←
             </button>
             <button
               className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
-              onClick={() => sendDirectionToThinkV('stop')}
+              onClick={() => sendDirection('stop')}
             >
               ■
             </button>
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-              onClick={() => sendDirectionToThinkV('right')}
+              onClick={() => sendDirection('right')}
             >
               →
             </button>
@@ -207,59 +193,28 @@ const App = () => {
             <div></div>
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-              onClick={() => sendDirectionToThinkV('backward')}
+              onClick={() => sendDirection('backward')}
             >
               ↓
             </button>
             <div></div>
           </div>
+
+          {/* Motor Speed Slider */}
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold">⚡ Motor Speed: {motorSpeed}%</h3>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={motorSpeed}
+              onChange={handleSpeedChange}
+              className="w-full"
+            />
+          </div>
         </div>
-
-
-        {/* Sensor Cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 gap-6 col-span-2">
-          {[
-            {
-              title: `🌡️ Temperature: ${sensorData.dht_sensor.temperature ?? 'N/A'}°C`,
-              color: 'bg-yellow-100',
-            },
-            {
-              title: `💧 Humidity: ${sensorData.dht_sensor.humidity ?? 'N/A'}%`,
-              color: 'bg-blue-100',
-            },
-            {
-              title: `🪞 Gas Sensor:         ${
-                sensorData.gas_sensor ? 'Detected' : '\Not Detected'
-              }`,
-              color: 'bg-red-100',
-            },
-            {
-              title: (
-                <>
-                  🔦 IR Readings:
-                  <ul className="text-left pl-4 mt-1 list-disc list-inside">
-                    {Object.entries(sensorData.ir_sensors).map(([key, value]) => (
-                      <li key={key}>
-                        {key}: {String(value)}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ),
-              color: 'bg-green-100',
-            },
-          ].map((item, idx) => (
-            <div
-              key={idx}
-              className={`${item.color} text-black p-6 rounded-lg shadow-md text-center font-medium transition hover:shadow-lg flex items-center justify-center`}
-            >
-              {item.title}
-            </div>
-          ))}
-        </section>
       </main>
 
-      {/* Footer */}
       <footer className="bg-gray-800 py-4 text-center text-gray-400">
         © 2025 Rescue Twin
       </footer>
